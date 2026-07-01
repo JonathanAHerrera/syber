@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Task } from "@/lib/queries";
 import { markDone } from "@/lib/queries";
 import EditOverlay from "./EditOverlay";
@@ -20,12 +20,29 @@ export default function TaskItem({ task, onDropTag, onDragHover }: Props) {
   const [dragging, setDragging] = useState(false);
   const [ghostPos, setGhostPos] = useState({ x: 0, y: 0 });
 
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startRef = useRef({ x: 0, y: 0 });
   const armedRef = useRef(false);
   const draggingRef = useRef(false);
   const suppressClickRef = useRef(false);
   const pressActiveRef = useRef(false);
+
+  // On mobile, preventDefault() on POINTER events does nothing to stop the
+  // page from scrolling — only touch-action CSS or a NON-passive touchmove
+  // listener can. React attaches touchmove passively, so we bind our own.
+  // Once the long-press has armed (finger held still, no scroll started yet),
+  // we block the scroll so the browser hands the gesture to us instead of
+  // firing pointercancel and killing the drag.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const onTouchMove = (e: TouchEvent) => {
+      if (armedRef.current || draggingRef.current) e.preventDefault();
+    };
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    return () => el.removeEventListener("touchmove", onTouchMove);
+  }, []);
 
   // Armed = long-press held long enough to pick the task up. Only becomes a
   // drag if the pointer then moves; otherwise it's the existing edit gesture.
@@ -126,14 +143,17 @@ export default function TaskItem({ task, onDropTag, onDragHover }: Props) {
   return (
     <>
       <div
+        ref={rootRef}
         className={`flex items-start gap-3 py-3 px-4 bg-white rounded-lg border border-gray-100 select-none cursor-pointer hover:border-gray-300 transition ${
           dragging ? "opacity-40 touch-none" : ""
         }`}
+        style={{ WebkitTouchCallout: "none" }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
         onPointerLeave={cancelPress}
+        onContextMenu={(e) => e.preventDefault()}
         onClick={handleTap}
       >
         <div className="mt-0.5 w-4 h-4 rounded-full border border-gray-300 flex-shrink-0" />
