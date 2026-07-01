@@ -25,6 +25,7 @@ export default function TaskItem({ task, onDropTag, onDragHover }: Props) {
   const armedRef = useRef(false);
   const draggingRef = useRef(false);
   const suppressClickRef = useRef(false);
+  const pressActiveRef = useRef(false);
 
   // Armed = long-press held long enough to pick the task up. Only becomes a
   // drag if the pointer then moves; otherwise it's the existing edit gesture.
@@ -45,10 +46,23 @@ export default function TaskItem({ task, onDropTag, onDragHover }: Props) {
 
   function handlePointerDown(e: React.PointerEvent) {
     startRef.current = { x: e.clientX, y: e.clientY };
+    pressActiveRef.current = true;
+    // Capture immediately (not once a drag is recognized) so tracking
+    // survives the pointer leaving this element's bounds on the way to a
+    // tab strip elsewhere on the page.
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      // ignore — capture is a best-effort affordance
+    }
     startPress();
   }
 
   function handlePointerMove(e: React.PointerEvent) {
+    // pointermove also fires on plain hover (no button held) — ignore
+    // unless we're in an actual press-and-hold gesture.
+    if (!pressActiveRef.current) return;
+
     if (draggingRef.current) {
       e.preventDefault();
       setGhostPos({ x: e.clientX, y: e.clientY });
@@ -68,11 +82,6 @@ export default function TaskItem({ task, onDropTag, onDragHover }: Props) {
       e.preventDefault();
       draggingRef.current = true;
       setDragging(true);
-      try {
-        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      } catch {
-        // ignore — capture is a best-effort affordance
-      }
       setGhostPos({ x: e.clientX, y: e.clientY });
       return;
     }
@@ -81,6 +90,7 @@ export default function TaskItem({ task, onDropTag, onDragHover }: Props) {
   }
 
   function handlePointerUp(e: React.PointerEvent) {
+    pressActiveRef.current = false;
     if (draggingRef.current) {
       const tab = tabUnderPoint(e.clientX, e.clientY);
       if (tab) onDropTag?.(task, tab);
@@ -92,6 +102,16 @@ export default function TaskItem({ task, onDropTag, onDragHover }: Props) {
       setEditing(true);
       suppressClickRef.current = true;
     }
+    cancelPress();
+  }
+
+  function handlePointerCancel() {
+    // Browser aborted the gesture (e.g. a system gesture took over) — reset
+    // fully so a later hover doesn't get misread as an in-progress press.
+    pressActiveRef.current = false;
+    draggingRef.current = false;
+    setDragging(false);
+    onDragHover?.(null);
     cancelPress();
   }
 
@@ -112,6 +132,7 @@ export default function TaskItem({ task, onDropTag, onDragHover }: Props) {
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
         onPointerLeave={cancelPress}
         onClick={handleTap}
       >
@@ -136,7 +157,7 @@ export default function TaskItem({ task, onDropTag, onDragHover }: Props) {
       {dragging && (
         <div
           className="fixed z-50 pointer-events-none px-3 py-2 bg-black text-white text-xs rounded-md shadow-lg max-w-[70vw] truncate"
-          style={{ left: ghostPos.x + 12, top: ghostPos.y + 12 }}
+          style={{ left: ghostPos.x, top: ghostPos.y, transform: "translate(-50%, -50%)" }}
         >
           {task.text}
         </div>
