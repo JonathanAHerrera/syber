@@ -50,11 +50,22 @@ export default function TaskItem({ task, onDropTag, onDragHover }: Props) {
 
   function handlePointerMove(e: React.PointerEvent) {
     if (draggingRef.current) {
+      e.preventDefault();
       setGhostPos({ x: e.clientX, y: e.clientY });
       onDragHover?.(tabUnderPoint(e.clientX, e.clientY));
       return;
     }
-    if (armedRef.current && onDropTag) {
+
+    const dx = e.clientX - startRef.current.x;
+    const dy = e.clientY - startRef.current.y;
+    const moved = Math.hypot(dx, dy) > 10;
+    // Mouse users drag immediately on move — no need to wait out the long
+    // press. Touch waits for the hold (armedRef) so a quick swipe still
+    // scrolls the list instead of triggering a drag.
+    const canActivate = e.pointerType === "mouse" || armedRef.current;
+
+    if (onDropTag && moved && canActivate) {
+      e.preventDefault();
       draggingRef.current = true;
       setDragging(true);
       try {
@@ -66,9 +77,7 @@ export default function TaskItem({ task, onDropTag, onDragHover }: Props) {
       return;
     }
     // Moved before the press armed — this is a scroll/swipe, not a hold.
-    const dx = e.clientX - startRef.current.x;
-    const dy = e.clientY - startRef.current.y;
-    if (Math.hypot(dx, dy) > 10) cancelPress();
+    if (moved) cancelPress();
   }
 
   function handlePointerUp(e: React.PointerEvent) {
